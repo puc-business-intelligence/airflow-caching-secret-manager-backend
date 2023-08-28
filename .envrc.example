@@ -1,0 +1,6 @@
+# Note: You can source .envrc files higher up from parent folders
+source_up
+
+export PYTHON_VERSION=3.9.12
+layout pyenv $PYTHON_VERSION
+
