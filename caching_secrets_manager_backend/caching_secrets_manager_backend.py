@@ -1,13 +1,18 @@
 import logging
 from os import environ
-from functools import cached_property, cache
-from google.cloud import secretmanager_v1
+from functools import cached_property
+import json
+import base64
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
 from airflow.secrets.base_secrets import BaseSecretsBackend
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 log = logging.getLogger(__name__)
 
 class CachingSecretManagerBackend(BaseSecretsBackend, LoggingMixin):
+    NONE = object()
+
     """
     This class is implemented after google-cloud-secret-manager <~2.11.0
     See also: https://cloud.google.com/python/docs/reference/secretmanager/latest
@@ -26,10 +31,12 @@ class CachingSecretManagerBackend(BaseSecretsBackend, LoggingMixin):
         self.variables_prefix = variables_prefix
         self.config_prefix = config_prefix
         self.project_id = project_id
+        self.cache = dict()
 
     @cached_property
     def client(self):
-        return secretmanager_v1.SecretManagerServiceClient()
+        credentials, _project = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
+        return AuthorizedSession(credentials)
 
     def get_conn_uri(self, conn_id):
         """
@@ -58,18 +65,32 @@ class CachingSecretManagerBackend(BaseSecretsBackend, LoggingMixin):
             return None
         return self.get_value_from_secret(self.config_prefix, key)
 
-    @cache
     def get_value_from_secret(self, prefix, key, version='latest'):
+        # Note: Python 3.8 does not yet have functool @cache decorator available
+        ident = (prefix, key, version)
+        result = self.cache.get(ident, self.NONE)
+        if result != self.NONE:
+            return result
+        result = self.cache[ident] = self._get_value_from_secret(prefix, key, version=version)
+        return result
+
+    def _get_value_from_secret(self, prefix, key, version='latest'):
         env_value = self.get_value_from_env(prefix, key)
         if env_value:
             return env_value
         secret_id = f'{prefix}{key}'
         name = f'projects/{self.project_id}/secrets/{secret_id}/versions/{version}'
+        response = None
         try:
-            response = self.client.access_secret_version(name)
-            return response.payload.data.decode('utf-8')
+            response = self.client.get(f'https://secretmanager.googleapis.com/v1/{name}:access')
+            response.raise_for_status()
+            data = response.json()['payload']['data']
+            return base64.b64decode(data).decode('utf-8')
         except Exception as e:
-            log.exception(f'Exception {e}: Could not load secret {secret_id}')
+            if response is not None:
+                log.exception(f'Exception {e}: Could not load secret {secret_id}: {response.text}')
+            else:
+                log.exception(f'Exception {e}: Could not load secret {secret_id}')
             return None
 
     def get_value_from_env(self, prefix, key):

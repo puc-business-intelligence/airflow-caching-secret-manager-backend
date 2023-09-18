@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: airflow-caching-google-secret-manager-backend
-Version: 1.0.0
+Version: 1.0.4
 Summary: Use Google Secret Manager with environment variable fallback and caching.
 Author: Lukas Rieder
 Author-email: Lukas Rieder <lukas@harren.com>
@@ -31,6 +31,12 @@ Keywords: google,google-secret-manager,airflow
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Programming Language :: Python
 Classifier: Programming Language :: Python :: 3
-Requires-Python: >=3.9
+Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 License-File: LICENSE
+Requires-Dist: google-cloud-secret-manager
+
+# Airflow Caching Secret Manager Backend
+
+**Warning:** This project is unmaintained.
+
